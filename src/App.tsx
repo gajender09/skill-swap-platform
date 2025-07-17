@@ -16,15 +16,18 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+        <div className="min-h-screen">
           <Toaster 
             position="top-right"
             toastOptions={{
               duration: 4000,
               style: {
-                background: '#363636',
+                background: '#1f2937',
                 color: '#fff',
-                borderRadius: '10px',
+                borderRadius: '12px',
+                padding: '16px',
+                fontSize: '14px',
+                fontWeight: '500',
               },
               success: {
                 duration: 3000,
@@ -34,7 +37,7 @@ function App() {
                 },
               },
               error: {
-                duration: 4000,
+                duration: 5000,
                 iconTheme: {
                   primary: '#EF4444',
                   secondary: '#fff',

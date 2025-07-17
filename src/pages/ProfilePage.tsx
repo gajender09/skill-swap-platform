@@ -12,24 +12,23 @@ import {
   Star,
   Shield,
   Eye,
-  EyeOff
+  EyeOff,
+  Save,
+  Camera,
+  Award,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  Skill, 
-  UserSkillOffered, 
-  UserSkillWanted, 
-  getFromStorage, 
-  setToStorage, 
-  generateId 
-} from '../lib/mockData';
+import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const profileSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   location: z.string().optional(),
   bio: z.string().optional(),
-  availability: z.array(z.string()),
+  skills_offered: z.array(z.string()),
+  skills_wanted: z.array(z.string()),
+  availability: z.string(),
   is_public: z.boolean(),
 });
 
@@ -37,25 +36,32 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 
 const availabilityOptions = [
   'Weekday Mornings',
-  'Weekday Afternoons',
+  'Weekday Afternoons', 
   'Weekday Evenings',
   'Weekend Mornings',
   'Weekend Afternoons',
   'Weekend Evenings',
-  'Flexible',
+  'Flexible'
+];
+
+const skillSuggestions = [
+  'React', 'Vue.js', 'Angular', 'Node.js', 'Python', 'JavaScript', 'TypeScript', 'HTML/CSS',
+  'Photoshop', 'Figma', 'Illustrator', 'UI/UX Design', 'Graphic Design',
+  'Photography', 'Video Editing', 'Content Writing',
+  'Digital Marketing', 'SEO', 'Social Media Marketing',
+  'Excel', 'PowerPoint', 'Project Management', 'Data Analysis',
+  'Spanish', 'French', 'German', 'Mandarin',
+  'Guitar', 'Piano', 'Singing',
+  'Cooking', 'Fitness Training', 'Yoga',
+  'Public Speaking', 'Leadership', 'Communication'
 ];
 
 export default function ProfilePage() {
-  const { profile, updateProfile } = useAuth();
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [offeredSkills, setOfferedSkills] = useState<UserSkillOffered[]>([]);
-  const [wantedSkills, setWantedSkills] = useState<UserSkillWanted[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { profile, updateProfile, isAdmin } = useAuth();
+  const [loading, setLoading] = useState(false);
   const [showSkillModal, setShowSkillModal] = useState<'offered' | 'wanted' | null>(null);
-  const [selectedSkill, setSelectedSkill] = useState<string>('');
-  const [skillDescription, setSkillDescription] = useState('');
-  const [skillLevel, setSkillLevel] = useState<'beginner' | 'intermediate' | 'advanced' | 'expert'>('intermediate');
-  const [urgencyLevel, setUrgencyLevel] = useState<'low' | 'medium' | 'high'>('medium');
+  const [newSkill, setNewSkill] = useState('');
+  const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([]);
 
   const {
     register,
@@ -69,58 +75,40 @@ export default function ProfilePage() {
       name: profile?.name || '',
       location: profile?.location || '',
       bio: profile?.bio || '',
-      availability: profile?.availability || [],
+      skills_offered: profile?.skills_offered || [],
+      skills_wanted: profile?.skills_wanted || [],
+      availability: profile?.availability || 'Flexible',
       is_public: profile?.is_public ?? true,
     },
   });
 
-  const watchedAvailability = watch('availability');
+  const watchedSkillsOffered = watch('skills_offered');
+  const watchedSkillsWanted = watch('skills_wanted');
 
   useEffect(() => {
     if (profile) {
-      setValue('name', profile.name);
+      setValue('name', profile.name || '');
       setValue('location', profile.location || '');
       setValue('bio', profile.bio || '');
-      setValue('availability', profile.availability);
+      setValue('skills_offered', profile.skills_offered || []);
+      setValue('skills_wanted', profile.skills_wanted || []);
+      setValue('availability', profile.availability || 'Flexible');
       setValue('is_public', profile.is_public);
-      
-      fetchData();
     }
   }, [profile, setValue]);
 
-  const fetchData = () => {
-    try {
-      // Fetch all skills
-      const skillsData = getFromStorage<Skill[]>('skills', []);
-      setSkills(skillsData.filter(skill => skill.is_approved));
-
-      // Fetch user's offered skills
-      const offeredData = getFromStorage<UserSkillOffered[]>('userSkillsOffered', []);
-      const userOfferedSkills = offeredData
-        .filter(skill => skill.user_id === profile?.id)
-        .map(skill => ({
-          ...skill,
-          skill: skillsData.find(s => s.id === skill.skill_id),
-        }));
-      setOfferedSkills(userOfferedSkills);
-
-      // Fetch user's wanted skills
-      const wantedData = getFromStorage<UserSkillWanted[]>('userSkillsWanted', []);
-      const userWantedSkills = wantedData
-        .filter(skill => skill.user_id === profile?.id)
-        .map(skill => ({
-          ...skill,
-          skill: skillsData.find(s => s.id === skill.skill_id),
-        }));
-      setWantedSkills(userWantedSkills);
-
-    } catch (error: any) {
-      console.error('Error fetching data:', error);
-      toast.error('Error loading profile data');
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (newSkill) {
+      const filtered = skillSuggestions.filter(skill =>
+        skill.toLowerCase().includes(newSkill.toLowerCase()) &&
+        !watchedSkillsOffered?.includes(skill) &&
+        !watchedSkillsWanted?.includes(skill)
+      );
+      setFilteredSuggestions(filtered);
+    } else {
+      setFilteredSuggestions([]);
     }
-  };
+  }, [newSkill, watchedSkillsOffered, watchedSkillsWanted]);
 
   const onSubmit = async (data: ProfileFormData) => {
     try {
@@ -130,80 +118,25 @@ export default function ProfilePage() {
     }
   };
 
-  const handleAvailabilityChange = (option: string) => {
-    const current = watchedAvailability || [];
-    const updated = current.includes(option)
-      ? current.filter(item => item !== option)
-      : [...current, option];
-    setValue('availability', updated);
-  };
+  const addSkill = (skill: string) => {
+    if (!skill.trim() || !showSkillModal) return;
 
-  const addSkill = () => {
-    if (!selectedSkill || !profile) return;
-
-    try {
-      const newSkill = {
-        id: generateId(),
-        user_id: profile.id,
-        skill_id: selectedSkill,
-        description: skillDescription,
-        created_at: new Date().toISOString(),
-      };
-
-      if (showSkillModal === 'offered') {
-        const offeredSkillsData = getFromStorage<UserSkillOffered[]>('userSkillsOffered', []);
-        const newOfferedSkill = {
-          ...newSkill,
-          proficiency_level: skillLevel,
-        } as UserSkillOffered;
-        
-        setToStorage('userSkillsOffered', [...offeredSkillsData, newOfferedSkill]);
-      } else {
-        const wantedSkillsData = getFromStorage<UserSkillWanted[]>('userSkillsWanted', []);
-        const newWantedSkill = {
-          ...newSkill,
-          urgency_level: urgencyLevel,
-        } as UserSkillWanted;
-        
-        setToStorage('userSkillsWanted', [...wantedSkillsData, newWantedSkill]);
-      }
-
-      toast.success('Skill added successfully!');
-      setShowSkillModal(null);
-      setSelectedSkill('');
-      setSkillDescription('');
-      fetchData();
-    } catch (error: any) {
-      toast.error(error.message);
+    const currentSkills = showSkillModal === 'offered' ? watchedSkillsOffered : watchedSkillsWanted;
+    
+    if (!currentSkills?.includes(skill)) {
+      const updatedSkills = [...(currentSkills || []), skill];
+      setValue(showSkillModal === 'offered' ? 'skills_offered' : 'skills_wanted', updatedSkills);
     }
+
+    setNewSkill('');
+    setShowSkillModal(null);
   };
 
-  const removeSkill = (skillId: string, type: 'offered' | 'wanted') => {
-    try {
-      if (type === 'offered') {
-        const offeredSkillsData = getFromStorage<UserSkillOffered[]>('userSkillsOffered', []);
-        const updated = offeredSkillsData.filter(skill => skill.id !== skillId);
-        setToStorage('userSkillsOffered', updated);
-      } else {
-        const wantedSkillsData = getFromStorage<UserSkillWanted[]>('userSkillsWanted', []);
-        const updated = wantedSkillsData.filter(skill => skill.id !== skillId);
-        setToStorage('userSkillsWanted', updated);
-      }
-
-      toast.success('Skill removed successfully!');
-      fetchData();
-    } catch (error: any) {
-      toast.error(error.message);
-    }
+  const removeSkill = (skill: string, type: 'offered' | 'wanted') => {
+    const currentSkills = type === 'offered' ? watchedSkillsOffered : watchedSkillsWanted;
+    const updatedSkills = currentSkills?.filter(s => s !== skill) || [];
+    setValue(type === 'offered' ? 'skills_offered' : 'skills_wanted', updatedSkills);
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -214,61 +147,96 @@ export default function ProfilePage() {
       >
         {/* Header */}
         <div className="text-center">
-          <img
-            src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'User')}&background=6366f1&color=white`}
-            alt={profile?.name}
-            className="w-24 h-24 rounded-full mx-auto mb-4"
-          />
-          <h1 className="text-3xl font-bold text-gray-900">{profile?.name}</h1>
-          <div className="flex items-center justify-center space-x-2 mt-2">
-            {profile?.is_public ? (
-              <><Eye className="w-4 h-4 text-green-600" /> <span className="text-green-600 text-sm">Public Profile</span></>
-            ) : (
-              <><EyeOff className="w-4 h-4 text-gray-600" /> <span className="text-gray-600 text-sm">Private Profile</span></>
-            )}
-            {profile?.is_admin && (
+          <div className="relative inline-block">
+            <img
+              src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'User')}&background=3b82f6&color=white&size=128`}
+              alt={profile?.name}
+              className="w-32 h-32 rounded-full mx-auto mb-4 ring-4 ring-blue-100 shadow-lg"
+            />
+            <button className="absolute bottom-4 right-0 p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-lg">
+              <Camera className="w-4 h-4" />
+            </button>
+          </div>
+          <h1 className="text-4xl font-bold text-gray-900">{profile?.name}</h1>
+          <div className="flex items-center justify-center space-x-4 mt-3">
+            <div className="flex items-center space-x-2">
+              {profile?.is_public ? (
+                <>
+                  <Eye className="w-4 h-4 text-green-600" />
+                  <span className="text-green-600 text-sm font-medium">Public Profile</span>
+                </>
+              ) : (
+                <>
+                  <EyeOff className="w-4 h-4 text-gray-600" />
+                  <span className="text-gray-600 text-sm font-medium">Private Profile</span>
+                </>
+              )}
+            </div>
+            {isAdmin && (
               <>
                 <span className="text-gray-300">•</span>
-                <Shield className="w-4 h-4 text-purple-600" />
-                <span className="text-purple-600 text-sm">Admin</span>
+                <div className="flex items-center space-x-2">
+                  <Shield className="w-4 h-4 text-purple-600" />
+                  <span className="text-purple-600 text-sm font-medium">Admin</span>
+                </div>
               </>
             )}
           </div>
+
+          {/* Stats */}
+          <div className="flex justify-center space-x-8 mt-6">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-gray-900">{profile?.total_swaps || 0}</div>
+              <div className="text-sm text-gray-600">Swaps</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-gray-900">
+                {profile?.average_rating ? profile.average_rating.toFixed(1) : '--'}
+              </div>
+              <div className="text-sm text-gray-600">Rating</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-gray-900">{profile?.total_ratings || 0}</div>
+              <div className="text-sm text-gray-600">Reviews</div>
+            </div>
+          </div>
         </div>
 
-        {/* Basic Information Form */}
-        <div className="bg-white/80 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Basic Information</h2>
+        {/* Profile Form */}
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-8 border border-white/20 shadow-lg">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Profile Information</h2>
           
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  {...register('name')}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="Enter your full name"
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Full Name
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    {...register('name')}
+                    className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    placeholder="Enter your full name"
+                  />
+                </div>
+                {errors.name && (
+                  <p className="text-red-600 text-sm mt-1">{errors.name.message}</p>
+                )}
               </div>
-              {errors.name && (
-                <p className="text-red-600 text-sm mt-1">{errors.name.message}</p>
-              )}
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Location (Optional)
-              </label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  {...register('location')}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="City, State/Country"
-                />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Location (Optional)
+                </label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    {...register('location')}
+                    className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    placeholder="City, State/Country"
+                  />
+                </div>
               </div>
             </div>
 
@@ -279,30 +247,25 @@ export default function ProfilePage() {
               <textarea
                 {...register('bio')}
                 rows={4}
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                placeholder="Tell others about yourself and your interests..."
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                placeholder="Tell others about yourself, your interests, and what you're passionate about..."
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Availability
               </label>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {availabilityOptions.map((option) => (
-                  <label
-                    key={option}
-                    className="flex items-center space-x-2 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={watchedAvailability?.includes(option) || false}
-                      onChange={() => handleAvailabilityChange(option)}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="text-sm text-gray-700">{option}</span>
-                  </label>
-                ))}
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <select
+                  {...register('availability')}
+                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                >
+                  {availabilityOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -310,7 +273,7 @@ export default function ProfilePage() {
               <input
                 {...register('is_public')}
                 type="checkbox"
-                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
               />
               <label className="text-sm text-gray-700">
                 Make my profile public (others can find and contact me)
@@ -320,43 +283,38 @@ export default function ProfilePage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white py-3 rounded-lg font-medium hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 disabled:opacity-50"
+              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-4 rounded-xl font-semibold hover:from-blue-600 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 shadow-lg flex items-center justify-center space-x-2"
             >
-              {isSubmitting ? 'Saving...' : 'Save Changes'}
+              <Save className="w-5 h-5" />
+              <span>{isSubmitting ? 'Saving...' : 'Save Changes'}</span>
             </button>
           </form>
         </div>
 
         {/* Skills Offered */}
-        <div className="bg-white/80 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-8 border border-white/20 shadow-lg">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">Skills I Can Teach</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Skills I Can Teach</h2>
             <button
               onClick={() => setShowSkillModal('offered')}
-              className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors shadow-lg"
             >
               <Plus className="w-4 h-4" />
               <span>Add Skill</span>
             </button>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {offeredSkills.map((userSkill) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {watchedSkillsOffered?.map((skill) => (
               <div
-                key={userSkill.id}
-                className="p-4 border border-gray-200 rounded-lg group hover:border-indigo-300 transition-colors"
+                key={skill}
+                className="group p-4 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition-colors"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-medium text-gray-900">{userSkill.skill?.name}</h3>
-                    <p className="text-sm text-indigo-600 capitalize">{userSkill.proficiency_level}</p>
-                    {userSkill.description && (
-                      <p className="text-sm text-gray-600 mt-1">{userSkill.description}</p>
-                    )}
-                  </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-blue-900">{skill}</span>
                   <button
-                    onClick={() => removeSkill(userSkill.id, 'offered')}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-red-600 hover:bg-red-50 rounded transition-all"
+                    onClick={() => removeSkill(skill, 'offered')}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-red-600 hover:bg-red-100 rounded-lg transition-all"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -365,44 +323,39 @@ export default function ProfilePage() {
             ))}
           </div>
           
-          {offeredSkills.length === 0 && (
-            <div className="text-center py-8">
-              <Star className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">No skills added yet. Add skills you can teach others!</p>
+          {(!watchedSkillsOffered || watchedSkillsOffered.length === 0) && (
+            <div className="text-center py-12">
+              <Award className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-600 text-lg">No skills added yet</p>
+              <p className="text-gray-500">Add skills you can teach others!</p>
             </div>
           )}
         </div>
 
         {/* Skills Wanted */}
-        <div className="bg-white/80 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-8 border border-white/20 shadow-lg">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">Skills I Want to Learn</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Skills I Want to Learn</h2>
             <button
               onClick={() => setShowSkillModal('wanted')}
-              className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors shadow-lg"
             >
               <Plus className="w-4 h-4" />
               <span>Add Skill</span>
             </button>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {wantedSkills.map((userSkill) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {watchedSkillsWanted?.map((skill) => (
               <div
-                key={userSkill.id}
-                className="p-4 border border-gray-200 rounded-lg group hover:border-purple-300 transition-colors"
+                key={skill}
+                className="group p-4 bg-purple-50 border border-purple-200 rounded-xl hover:bg-purple-100 transition-colors"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-medium text-gray-900">{userSkill.skill?.name}</h3>
-                    <p className="text-sm text-purple-600 capitalize">{userSkill.urgency_level} priority</p>
-                    {userSkill.description && (
-                      <p className="text-sm text-gray-600 mt-1">{userSkill.description}</p>
-                    )}
-                  </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-purple-900">{skill}</span>
                   <button
-                    onClick={() => removeSkill(userSkill.id, 'wanted')}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-red-600 hover:bg-red-50 rounded transition-all"
+                    onClick={() => removeSkill(skill, 'wanted')}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-red-600 hover:bg-red-100 rounded-lg transition-all"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -411,10 +364,11 @@ export default function ProfilePage() {
             ))}
           </div>
           
-          {wantedSkills.length === 0 && (
-            <div className="text-center py-8">
-              <Clock className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">No skills added yet. Add skills you want to learn!</p>
+          {(!watchedSkillsWanted || watchedSkillsWanted.length === 0) && (
+            <div className="text-center py-12">
+              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-600 text-lg">No skills added yet</p>
+              <p className="text-gray-500">Add skills you want to learn!</p>
             </div>
           )}
         </div>
@@ -426,15 +380,15 @@ export default function ProfilePage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-xl p-6 w-full max-w-md"
+            className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl"
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">
+              <h3 className="text-xl font-semibold">
                 Add {showSkillModal === 'offered' ? 'Skill I Can Teach' : 'Skill I Want to Learn'}
               </h3>
               <button
                 onClick={() => setShowSkillModal(null)}
-                className="p-1 text-gray-400 hover:text-gray-600"
+                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -443,89 +397,48 @@ export default function ProfilePage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Skill
+                  Skill Name
                 </label>
-                <select
-                  value={selectedSkill}
-                  onChange={(e) => setSelectedSkill(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="">Select a skill</option>
-                  {skills
-                    .filter(skill => {
-                      const existingSkills = showSkillModal === 'offered' 
-                        ? offeredSkills.map(s => s.skill_id)
-                        : wantedSkills.map(s => s.skill_id);
-                      return !existingSkills.includes(skill.id);
-                    })
-                    .map((skill) => (
-                      <option key={skill.id} value={skill.id}>
-                        {skill.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              {showSkillModal === 'offered' ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Proficiency Level
-                  </label>
-                  <select
-                    value={skillLevel}
-                    onChange={(e) => setSkillLevel(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  >
-                    <option value="beginner">Beginner</option>
-                    <option value="intermediate">Intermediate</option>
-                    <option value="advanced">Advanced</option>
-                    <option value="expert">Expert</option>
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Urgency Level
-                  </label>
-                  <select
-                    value={urgencyLevel}
-                    onChange={(e) => setUrgencyLevel(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description (Optional)
-                </label>
-                <textarea
-                  value={skillDescription}
-                  onChange={(e) => setSkillDescription(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder={showSkillModal === 'offered' 
-                    ? "What can you teach? Any specific areas of expertise?"
-                    : "What would you like to learn? Any specific goals?"
-                  }
+                <input
+                  type="text"
+                  value={newSkill}
+                  onChange={(e) => setNewSkill(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  placeholder="Type a skill name..."
+                  onKeyPress={(e) => e.key === 'Enter' && addSkill(newSkill)}
                 />
               </div>
+
+              {filteredSuggestions.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Suggestions
+                  </label>
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {filteredSuggestions.slice(0, 10).map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        onClick={() => addSkill(suggestion)}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex space-x-3 pt-4">
                 <button
                   onClick={() => setShowSkillModal(null)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={addSkill}
-                  disabled={!selectedSkill}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  onClick={() => addSkill(newSkill)}
+                  disabled={!newSkill.trim()}
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
                 >
                   Add Skill
                 </button>

@@ -8,15 +8,22 @@ import {
   Trash2, 
   Star,
   MessageSquare,
-  User
+  User,
+  Calendar,
+  Award
 } from 'lucide-react';
-import { SwapRequest, getFromStorage, setToStorage, generateId } from '../lib/mockData';
+import { supabase, SwapRequest } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
+interface ExtendedSwapRequest extends SwapRequest {
+  from_profile?: { name: string; avatar_url?: string };
+  to_profile?: { name: string; avatar_url?: string };
+}
+
 export default function SwapsPage() {
-  const { profile } = useAuth();
-  const [swaps, setSwaps] = useState<SwapRequest[]>([]);
+  const { user } = useAuth();
+  const [swaps, setSwaps] = useState<ExtendedSwapRequest[]>([]);
   const [activeTab, setActiveTab] = useState<'received' | 'sent' | 'completed'>('received');
   const [loading, setLoading] = useState(true);
   const [showRatingModal, setShowRatingModal] = useState<string | null>(null);
@@ -24,31 +31,26 @@ export default function SwapsPage() {
   const [feedback, setFeedback] = useState('');
 
   useEffect(() => {
-    if (profile) {
+    if (user) {
       fetchSwaps();
     }
-  }, [profile]);
+  }, [user]);
 
-  const fetchSwaps = () => {
+  const fetchSwaps = async () => {
     try {
-      const swapRequests = getFromStorage<SwapRequest[]>('swapRequests', []);
-      const users = getFromStorage<any[]>('users', []);
-      const skills = getFromStorage<any[]>('skills', []);
+      const { data, error } = await supabase
+        .from('swap_requests')
+        .select(`
+          *,
+          from_profile:profiles!swap_requests_from_user_id_fkey(name, avatar_url),
+          to_profile:profiles!swap_requests_to_user_id_fkey(name, avatar_url)
+        `)
+        .or(`from_user_id.eq.${user?.id},to_user_id.eq.${user?.id}`)
+        .order('created_at', { ascending: false });
 
-      const userSwaps = swapRequests
-        .filter(swap => 
-          swap.requester_id === profile?.id || swap.provider_id === profile?.id
-        )
-        .map(swap => ({
-          ...swap,
-          requester: users.find(u => u.id === swap.requester_id),
-          provider: users.find(u => u.id === swap.provider_id),
-          offered_skill: skills.find(s => s.id === swap.offered_skill_id),
-          requested_skill: skills.find(s => s.id === swap.requested_skill_id),
-        }))
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      if (error) throw error;
 
-      setSwaps(userSwaps);
+      setSwaps(data || []);
     } catch (error: any) {
       console.error('Error fetching swaps:', error);
       toast.error('Error loading swaps');
@@ -57,16 +59,15 @@ export default function SwapsPage() {
     }
   };
 
-  const updateSwapStatus = (swapId: string, status: string) => {
+  const updateSwapStatus = async (swapId: string, status: string) => {
     try {
-      const swapRequests = getFromStorage<SwapRequest[]>('swapRequests', []);
-      const updatedSwaps = swapRequests.map(swap => 
-        swap.id === swapId 
-          ? { ...swap, status, updated_at: new Date().toISOString() }
-          : swap
-      );
-      
-      setToStorage('swapRequests', updatedSwaps);
+      const { error } = await supabase
+        .from('swap_requests')
+        .update({ status })
+        .eq('id', swapId);
+
+      if (error) throw error;
+
       toast.success(`Swap ${status} successfully!`);
       fetchSwaps();
     } catch (error: any) {
@@ -74,12 +75,15 @@ export default function SwapsPage() {
     }
   };
 
-  const deleteSwap = (swapId: string) => {
+  const deleteSwap = async (swapId: string) => {
     try {
-      const swapRequests = getFromStorage<SwapRequest[]>('swapRequests', []);
-      const updatedSwaps = swapRequests.filter(swap => swap.id !== swapId);
-      
-      setToStorage('swapRequests', updatedSwaps);
+      const { error } = await supabase
+        .from('swap_requests')
+        .delete()
+        .eq('id', swapId);
+
+      if (error) throw error;
+
       toast.success('Swap request deleted successfully!');
       fetchSwaps();
     } catch (error: any) {
@@ -87,20 +91,20 @@ export default function SwapsPage() {
     }
   };
 
-  const submitRating = (swapId: string, ratedUserId: string) => {
+  const submitRating = async (swapId: string, ratedUserId: string) => {
     try {
-      const ratings = getFromStorage<any[]>('ratings', []);
-      const newRating = {
-        id: generateId(),
-        swap_request_id: swapId,
-        rater_id: profile?.id,
-        rated_id: ratedUserId,
-        rating,
-        feedback,
-        created_at: new Date().toISOString(),
-      };
+      const { error } = await supabase
+        .from('swap_ratings')
+        .insert({
+          swap_request_id: swapId,
+          rater_user_id: user?.id,
+          rated_user_id: ratedUserId,
+          rating,
+          feedback,
+        });
 
-      setToStorage('ratings', [...ratings, newRating]);
+      if (error) throw error;
+
       toast.success('Rating submitted successfully!');
       setShowRatingModal(null);
       setRating(5);
@@ -113,23 +117,21 @@ export default function SwapsPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'accepted': return 'bg-blue-100 text-blue-800';
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'rejected': return 'bg-red-100 text-red-800';
-      case 'cancelled': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'accepted': return 'bg-green-100 text-green-800 border-green-200';
+      case 'rejected': return 'bg-red-100 text-red-800 border-red-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
   const filteredSwaps = swaps.filter(swap => {
     switch (activeTab) {
       case 'received':
-        return swap.provider_id === profile?.id && ['pending', 'accepted'].includes(swap.status);
+        return swap.to_user_id === user?.id && swap.status === 'pending';
       case 'sent':
-        return swap.requester_id === profile?.id && ['pending', 'accepted'].includes(swap.status);
+        return swap.from_user_id === user?.id && swap.status === 'pending';
       case 'completed':
-        return swap.status === 'completed';
+        return swap.status === 'accepted';
       default:
         return false;
     }
@@ -138,13 +140,13 @@ export default function SwapsPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -152,29 +154,45 @@ export default function SwapsPage() {
       >
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Swaps</h1>
-          <p className="text-gray-600">Manage your skill swap requests and exchanges</p>
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">My Swaps</h1>
+          <p className="text-xl text-gray-600">Manage your skill exchange requests</p>
         </div>
 
         {/* Tabs */}
-        <div className="bg-white/80 backdrop-blur-lg rounded-xl border border-white/20 p-1">
-          <div className="grid grid-cols-3 gap-1">
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/20 p-2 shadow-lg">
+          <div className="grid grid-cols-3 gap-2">
             {[
-              { key: 'received', label: 'Received', count: swaps.filter(s => s.provider_id === profile?.id && ['pending', 'accepted'].includes(s.status)).length },
-              { key: 'sent', label: 'Sent', count: swaps.filter(s => s.requester_id === profile?.id && ['pending', 'accepted'].includes(s.status)).length },
-              { key: 'completed', label: 'Completed', count: swaps.filter(s => s.status === 'completed').length },
+              { 
+                key: 'received', 
+                label: 'Received', 
+                count: swaps.filter(s => s.to_user_id === user?.id && s.status === 'pending').length,
+                icon: MessageSquare
+              },
+              { 
+                key: 'sent', 
+                label: 'Sent', 
+                count: swaps.filter(s => s.from_user_id === user?.id && s.status === 'pending').length,
+                icon: ArrowLeftRight
+              },
+              { 
+                key: 'completed', 
+                label: 'Completed', 
+                count: swaps.filter(s => s.status === 'accepted').length,
+                icon: Award
+              },
             ].map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
-                className={`flex items-center justify-center space-x-2 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                className={`flex items-center justify-center space-x-2 px-4 py-4 rounded-xl text-sm font-semibold transition-all duration-200 ${
                   activeTab === tab.key
-                    ? 'bg-indigo-600 text-white shadow-lg'
-                    : 'text-gray-600 hover:text-indigo-600 hover:bg-indigo-50'
+                    ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg'
+                    : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
                 }`}
               >
+                <tab.icon className="w-5 h-5" />
                 <span>{tab.label}</span>
-                <span className={`px-2 py-0.5 rounded-full text-xs ${
+                <span className={`px-2 py-1 rounded-full text-xs font-bold ${
                   activeTab === tab.key ? 'bg-white/20' : 'bg-gray-200'
                 }`}>
                   {tab.count}
@@ -187,53 +205,56 @@ export default function SwapsPage() {
         {/* Swaps List */}
         <div className="space-y-4">
           {filteredSwaps.map((swap) => {
-            const isRequester = swap.requester_id === profile?.id;
-            const otherUser = isRequester ? swap.provider : swap.requester;
+            const isRequester = swap.from_user_id === user?.id;
+            const otherUser = isRequester ? swap.to_profile : swap.from_profile;
             
             return (
               <motion.div
                 key={swap.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white/80 backdrop-blur-lg rounded-xl p-6 border border-white/20"
+                className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-4 flex-1">
                     <img
-                      src={otherUser?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(otherUser?.name || 'User')}&background=6366f1&color=white`}
+                      src={otherUser?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(otherUser?.name || 'User')}&background=3b82f6&color=white`}
                       alt={otherUser?.name}
-                      className="w-12 h-12 rounded-full"
+                      className="w-16 h-16 rounded-full ring-2 ring-blue-100"
                     />
                     
                     <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <h3 className="font-semibold text-gray-900">
+                      <div className="flex items-center space-x-3 mb-3">
+                        <h3 className="font-bold text-gray-900 text-lg">
                           {isRequester ? `Request sent to ${otherUser?.name}` : `Request from ${otherUser?.name}`}
                         </h3>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(swap.status)}`}>
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(swap.status)}`}>
                           {swap.status.charAt(0).toUpperCase() + swap.status.slice(1)}
                         </span>
                       </div>
                       
-                      <div className="flex items-center space-x-2 text-sm text-gray-600 mb-2">
-                        <span className="font-medium">{swap.offered_skill?.name}</span>
-                        <ArrowLeftRight className="w-4 h-4" />
-                        <span className="font-medium">{swap.requested_skill?.name}</span>
+                      <div className="flex items-center space-x-3 text-gray-700 mb-3">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-semibold text-blue-600">{swap.my_skill}</span>
+                          <ArrowLeftRight className="w-4 h-4 text-gray-400" />
+                          <span className="font-semibold text-purple-600">{swap.their_skill}</span>
+                        </div>
                       </div>
                       
                       {swap.message && (
-                        <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                          <p className="text-sm text-gray-700">{swap.message}</p>
+                        <div className="bg-gray-50 rounded-xl p-4 mb-3">
+                          <p className="text-gray-700 italic">"{swap.message}"</p>
                         </div>
                       )}
                       
-                      <div className="flex items-center space-x-4 text-xs text-gray-500">
+                      <div className="flex items-center space-x-4 text-sm text-gray-500">
                         <div className="flex items-center space-x-1">
-                          <Clock className="w-3 h-3" />
+                          <Calendar className="w-4 h-4" />
                           <span>Created {new Date(swap.created_at).toLocaleDateString()}</span>
                         </div>
                         {swap.updated_at !== swap.created_at && (
                           <div className="flex items-center space-x-1">
+                            <Clock className="w-4 h-4" />
                             <span>Updated {new Date(swap.updated_at).toLocaleDateString()}</span>
                           </div>
                         )}
@@ -247,37 +268,27 @@ export default function SwapsPage() {
                       <>
                         <button
                           onClick={() => updateSwapStatus(swap.id, 'accepted')}
-                          className="flex items-center space-x-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors font-medium shadow-lg"
                         >
-                          <Check className="w-3 h-3" />
+                          <Check className="w-4 h-4" />
                           <span>Accept</span>
                         </button>
                         <button
                           onClick={() => updateSwapStatus(swap.id, 'rejected')}
-                          className="flex items-center space-x-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                          className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-medium shadow-lg"
                         >
-                          <X className="w-3 h-3" />
+                          <X className="w-4 h-4" />
                           <span>Reject</span>
                         </button>
                       </>
                     )}
 
-                    {swap.status === 'accepted' && (
-                      <button
-                        onClick={() => updateSwapStatus(swap.id, 'completed')}
-                        className="flex items-center space-x-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                      >
-                        <Check className="w-3 h-3" />
-                        <span>Mark Complete</span>
-                      </button>
-                    )}
-
                     {activeTab === 'sent' && swap.status === 'pending' && (
                       <button
                         onClick={() => deleteSwap(swap.id)}
-                        className="flex items-center space-x-1 px-3 py-1 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                        className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition-colors font-medium shadow-lg"
                       >
-                        <Trash2 className="w-3 h-3" />
+                        <Trash2 className="w-4 h-4" />
                         <span>Cancel</span>
                       </button>
                     )}
@@ -285,9 +296,9 @@ export default function SwapsPage() {
                     {activeTab === 'completed' && (
                       <button
                         onClick={() => setShowRatingModal(swap.id)}
-                        className="flex items-center space-x-1 px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                        className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl hover:from-purple-600 hover:to-pink-700 transition-all font-medium shadow-lg"
                       >
-                        <Star className="w-3 h-3" />
+                        <Star className="w-4 h-4" />
                         <span>Rate</span>
                       </button>
                     )}
@@ -298,12 +309,12 @@ export default function SwapsPage() {
           })}
 
           {filteredSwaps.length === 0 && (
-            <div className="text-center py-12">
-              <ArrowLeftRight className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <div className="text-center py-16">
+              <ArrowLeftRight className="w-20 h-20 text-gray-300 mx-auto mb-6" />
+              <h3 className="text-2xl font-medium text-gray-900 mb-2">
                 No {activeTab} swaps
               </h3>
-              <p className="text-gray-600">
+              <p className="text-gray-600 text-lg">
                 {activeTab === 'received' && "You haven't received any swap requests yet."}
                 {activeTab === 'sent' && "You haven't sent any swap requests yet."}
                 {activeTab === 'completed' && "You haven't completed any swaps yet."}
@@ -319,31 +330,31 @@ export default function SwapsPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-xl p-6 w-full max-w-md"
+            className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl"
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Rate this swap</h3>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold">Rate this swap</h3>
               <button
                 onClick={() => setShowRatingModal(null)}
-                className="p-1 text-gray-400 hover:text-gray-600"
+                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-3">
                   Rating (1-5 stars)
                 </label>
-                <div className="flex space-x-1">
+                <div className="flex justify-center space-x-2">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
                       key={star}
                       onClick={() => setRating(star)}
-                      className={`p-1 ${star <= rating ? 'text-yellow-500' : 'text-gray-300'} hover:text-yellow-500 transition-colors`}
+                      className={`p-2 transition-colors ${star <= rating ? 'text-yellow-500' : 'text-gray-300'} hover:text-yellow-500`}
                     >
-                      <Star className="w-6 h-6 fill-current" />
+                      <Star className="w-8 h-8 fill-current" />
                     </button>
                   ))}
                 </div>
@@ -356,8 +367,8 @@ export default function SwapsPage() {
                 <textarea
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  rows={4}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="How was your experience? Any comments for improvement?"
                 />
               </div>
@@ -365,7 +376,7 @@ export default function SwapsPage() {
               <div className="flex space-x-3 pt-4">
                 <button
                   onClick={() => setShowRatingModal(null)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
                 >
                   Cancel
                 </button>
@@ -373,11 +384,11 @@ export default function SwapsPage() {
                   onClick={() => {
                     const swap = swaps.find(s => s.id === showRatingModal);
                     if (swap) {
-                      const otherUserId = swap.requester_id === profile?.id ? swap.provider_id : swap.requester_id;
+                      const otherUserId = swap.from_user_id === user?.id ? swap.to_user_id : swap.from_user_id;
                       submitRating(swap.id, otherUserId);
                     }
                   }}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all font-medium"
                 >
                   Submit Rating
                 </button>

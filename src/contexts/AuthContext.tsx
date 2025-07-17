@@ -1,20 +1,19 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Profile, getFromStorage, setToStorage, generateId, initializeMockData } from '../lib/mockData';
+import { User, Session } from '@supabase/supabase-js';
+import { supabase, Profile } from '../lib/supabase';
 import toast from 'react-hot-toast';
-
-interface User {
-  id: string;
-  email: string;
-}
 
 interface AuthContextType {
   user: User | null;
   profile: Profile | null;
+  session: Session | null;
   loading: boolean;
+  isAdmin: boolean;
   signUp: (email: string, password: string, name: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,64 +33,101 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    // Initialize mock data
-    initializeMockData();
-    
-    // Check for existing session
-    const savedUser = getFromStorage<User | null>('currentUser', null);
-    if (savedUser) {
-      setUser(savedUser);
-      fetchProfile(savedUser.id);
-    } else {
-      setLoading(false);
-    }
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchProfile(session.user.id);
+        checkAdminStatus(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (session?.user) {
+          await fetchProfile(session.user.id);
+          await checkAdminStatus(session.user.id);
+        } else {
+          setProfile(null);
+          setIsAdmin(false);
+          setLoading(false);
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const fetchProfile = (userId: string) => {
-    const users = getFromStorage<Profile[]>('users', []);
-    const userProfile = users.find(u => u.id === userId);
-    if (userProfile) {
-      setProfile(userProfile);
+  const fetchProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      setProfile(data);
+    } catch (error: any) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const checkAdminStatus = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('role', 'admin')
+        .single();
+
+      setIsAdmin(!!data && !error);
+    } catch (error) {
+      setIsAdmin(false);
+    }
   };
 
   const signUp = async (email: string, password: string, name: string) => {
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const users = getFromStorage<Profile[]>('users', []);
-      const existingUser = users.find(u => u.name.toLowerCase() === email.toLowerCase());
-      
-      if (existingUser) {
-        throw new Error('User already exists');
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      if (data.user) {
+        // Create profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: data.user.id,
+            name,
+            is_public: true,
+          });
+
+        if (profileError) throw profileError;
+
+        toast.success('Account created successfully! Please check your email to verify your account.');
       }
-
-      const userId = generateId();
-      const newUser: User = { id: userId, email };
-      const newProfile: Profile = {
-        id: userId,
-        name,
-        is_public: true,
-        is_banned: false,
-        is_admin: false,
-        availability: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      const updatedUsers = [...users, newProfile];
-      setToStorage('users', updatedUsers);
-      setToStorage('currentUser', newUser);
-      
-      setUser(newUser);
-      setProfile(newProfile);
-      
-      toast.success('Account created successfully!');
     } catch (error: any) {
       toast.error(error.message);
       throw error;
@@ -100,35 +136,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const users = getFromStorage<Profile[]>('users', []);
-      let userProfile: Profile | undefined;
-      
-      // Check for demo accounts
-      if (email === 'admin@demo.com') {
-        userProfile = users.find(u => u.is_admin);
-      } else if (email === 'user@demo.com') {
-        userProfile = users.find(u => !u.is_admin && u.name === 'Alice Johnson');
-      } else {
-        userProfile = users.find(u => u.name.toLowerCase() === email.toLowerCase());
-      }
-      
-      if (!userProfile) {
-        throw new Error('Invalid credentials');
-      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      if (userProfile.is_banned) {
-        throw new Error('Account has been banned');
-      }
+      if (error) throw error;
 
-      const user: User = { id: userProfile.id, email };
-      setToStorage('currentUser', user);
-      
-      setUser(user);
-      setProfile(userProfile);
-      
       toast.success('Signed in successfully!');
     } catch (error: any) {
       toast.error(error.message);
@@ -138,9 +152,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signOut = async () => {
     try {
-      localStorage.removeItem('currentUser');
-      setUser(null);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
       setProfile(null);
+      setIsAdmin(false);
       toast.success('Signed out successfully!');
     } catch (error: any) {
       toast.error(error.message);
@@ -149,23 +165,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const updateProfile = async (updates: Partial<Profile>) => {
-    if (!user || !profile) throw new Error('No user logged in');
+    if (!user) throw new Error('No user logged in');
 
     try {
-      const users = getFromStorage<Profile[]>('users', []);
-      const updatedProfile = { 
-        ...profile, 
-        ...updates, 
-        updated_at: new Date().toISOString() 
-      };
-      
-      const updatedUsers = users.map(u => 
-        u.id === profile.id ? updatedProfile : u
-      );
-      
-      setToStorage('users', updatedUsers);
-      setProfile(updatedProfile);
-      
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      await refreshProfile();
       toast.success('Profile updated successfully!');
     } catch (error: any) {
       toast.error(error.message);
@@ -173,14 +183,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
+  const refreshProfile = async () => {
+    if (user) {
+      await fetchProfile(user.id);
+    }
+  };
+
   const value = {
     user,
     profile,
+    session,
     loading,
+    isAdmin,
     signUp,
     signIn,
     signOut,
     updateProfile,
+    refreshProfile,
   };
 
   return (
