@@ -121,6 +121,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
           .insert({
             user_id: data.user.id,
             name,
+            skills_offered: [],
+            skills_wanted: [],
+            availability: 'flexible',
+            average_rating: 0.00,
+            total_ratings: 0,
+            total_swaps: 0,
             is_public: true,
           });
 
