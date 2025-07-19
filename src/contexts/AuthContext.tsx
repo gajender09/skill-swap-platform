@@ -53,6 +53,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email);
         setSession(session);
         setUser(session?.user ?? null);
         
@@ -72,19 +73,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const fetchProfile = async (userId: string) => {
     try {
+      console.log('Fetching profile for user:', userId);
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
         .single();
 
-      if (error && error.code !== 'PGRST116') {
-        throw error;
+      if (error) {
+        console.error('Profile fetch error:', error);
+        if (error.code === 'PGRST116') {
+          // Profile doesn't exist, this is normal for new users
+          console.log('Profile not found, user may need to complete setup');
+        } else {
+          throw error;
+        }
+      } else {
+        console.log('Profile fetched successfully:', data);
+        setProfile(data);
       }
-
-      setProfile(data);
     } catch (error: any) {
       console.error('Error fetching profile:', error);
+      toast.error('Error loading profile');
     } finally {
       setLoading(false);
     }
@@ -97,6 +108,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         .select('role')
         .eq('user_id', userId)
         .eq('role', 'admin')
+        .eq('is_active', true)
         .single();
 
       setIsAdmin(!!data && !error);
@@ -107,52 +119,97 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signUp = async (email: string, password: string, name: string) => {
     try {
-      const { data, error } = await supabase.auth.signUp({
+      setLoading(true);
+      console.log('Starting signup process for:', email);
+
+      // Sign up the user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            name: name
+          }
+        }
       });
 
-      if (error) throw error;
+      if (authError) {
+        console.error('Auth signup error:', authError);
+        throw authError;
+      }
 
-      if (data.user) {
-        // Create profile
-        const { error: profileError } = await supabase
+      console.log('Auth signup successful:', authData);
+
+      if (authData.user) {
+        // Create profile - the trigger should have created the user record
+        console.log('Creating profile for user:', authData.user.id);
+        
+        const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .insert({
-            user_id: data.user.id,
-            name,
+            user_id: authData.user.id,
+            name: name,
             skills_offered: [],
             skills_wanted: [],
             availability: 'flexible',
-            average_rating: 0.00,
-            total_ratings: 0,
-            total_swaps: 0,
+            timezone: 'UTC',
+            languages: [],
+            experience_level: 'intermediate',
             is_public: true,
-          });
+            is_verified: false,
+            is_mentor: false,
+            currency: 'USD',
+            total_swaps: 0,
+            total_ratings: 0,
+            average_rating: 0.00,
+            response_rate: 0.00,
+            response_time_hours: 24
+          })
+          .select()
+          .single();
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.error('Profile creation error:', profileError);
+          throw profileError;
+        }
 
-        toast.success('Account created successfully! Please check your email to verify your account.');
+        console.log('Profile created successfully:', profileData);
+        setProfile(profileData);
+
+        toast.success('Account created successfully! Welcome to SkillSwap!');
       }
     } catch (error: any) {
-      toast.error(error.message);
+      console.error('Signup error:', error);
+      toast.error(error.message || 'Error creating account');
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      setLoading(true);
+      console.log('Starting signin process for:', email);
+
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Signin error:', error);
+        throw error;
+      }
 
-      toast.success('Signed in successfully!');
+      console.log('Signin successful:', data.user?.email);
+      toast.success('Welcome back!');
     } catch (error: any) {
-      toast.error(error.message);
+      console.error('Signin error:', error);
+      toast.error(error.message || 'Error signing in');
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -165,7 +222,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setIsAdmin(false);
       toast.success('Signed out successfully!');
     } catch (error: any) {
-      toast.error(error.message);
+      console.error('Signout error:', error);
+      toast.error(error.message || 'Error signing out');
       throw error;
     }
   };
@@ -174,17 +232,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (!user) throw new Error('No user logged in');
 
     try {
-      const { error } = await supabase
+      console.log('Updating profile:', updates);
+
+      const { data, error } = await supabase
         .from('profiles')
         .update(updates)
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Profile update error:', error);
+        throw error;
+      }
 
-      await refreshProfile();
+      console.log('Profile updated successfully:', data);
+      setProfile(data);
       toast.success('Profile updated successfully!');
     } catch (error: any) {
-      toast.error(error.message);
+      console.error('Update profile error:', error);
+      toast.error(error.message || 'Error updating profile');
       throw error;
     }
   };
