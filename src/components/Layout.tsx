@@ -46,23 +46,18 @@ export default function Layout({ children }: LayoutProps) {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Animated Background */}
-      <div className="parallax-bg">
-        <div className="parallax-layer"></div>
-      </div>
+    <div className="min-h-screen bg-gray-50">
       
       {/* Navigation */}
-      <nav className="nav-glass sticky top-0 z-50">
+      <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
               <Link to="/dashboard" className="flex items-center space-x-3">
-                <div className="w-12 h-12 btn-3d rounded-2xl flex items-center justify-center relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 opacity-90"></div>
-                  <Sparkles className="w-7 h-7 text-white relative z-10" />
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
+                  <Sparkles className="w-6 h-6 text-white" />
                 </div>
-                <span className="text-2xl font-bold gradient-text">
+                <span className="text-xl font-bold text-gray-900">
                   SkillSwap
                 </span>
               </Link>
@@ -76,39 +71,36 @@ export default function Layout({ children }: LayoutProps) {
                   <Link
                     key={item.name}
                     to={item.href}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden ${
+                    className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                       isActive
-                        ? 'glass-strong text-white shadow-lg'
-                        : 'text-white/80 hover:text-white hover:glass'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                     }`}
                   >
-                    {isActive && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-600/20 rounded-xl"></div>
-                    )}
                     <item.icon className="w-4 h-4" />
-                    <span className="relative z-10">{item.name}</span>
+                    <span>{item.name}</span>
                   </Link>
                 );
               })}
             </div>
 
             <div className="hidden md:flex items-center space-x-4">
-              <button className="relative p-3 glass rounded-xl hover:glass-strong transition-all duration-300 group">
-                <Bell className="w-5 h-5 text-white/80 group-hover:text-white transition-colors" />
-                <span className="notification-badge absolute -top-1 -right-1 w-3 h-3 rounded-full"></span>
+              <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                <Bell className="w-5 h-5" />
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
               </button>
               
               <div className="relative">
                 <button
                   onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center space-x-3 p-2 glass rounded-xl hover:glass-strong transition-all duration-300"
+                  className="flex items-center space-x-2 p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <img
                     src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'User')}&background=3b82f6&color=white`}
                     alt={profile?.name}
-                    className="w-8 h-8 rounded-full avatar-3d"
+                    className="w-8 h-8 rounded-full"
                   />
-                  <span className="text-sm font-medium text-white">{profile?.name}</span>
+                  <span className="text-sm font-medium text-gray-700">{profile?.name}</span>
                 </button>
 
                 <AnimatePresence>
@@ -117,11 +109,11 @@ export default function Layout({ children }: LayoutProps) {
                       initial={{ opacity: 0, scale: 0.95, y: -10 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                      className="absolute right-0 mt-2 w-48 modal-3d rounded-xl py-2"
+                      className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1"
                     >
                       <Link
                         to="/profile"
-                        className="flex items-center space-x-2 px-4 py-2 text-sm text-white/80 hover:text-white hover:glass transition-all"
+                        className="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
                         onClick={() => setShowUserMenu(false)}
                       >
                         <User className="w-4 h-4" />
@@ -129,7 +121,7 @@ export default function Layout({ children }: LayoutProps) {
                       </Link>
                       <Link
                         to="/settings"
-                        className="flex items-center space-x-2 px-4 py-2 text-sm text-white/80 hover:text-white hover:glass transition-all"
+                        className="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
                         onClick={() => setShowUserMenu(false)}
                       >
                         <Settings className="w-4 h-4" />
@@ -138,7 +130,7 @@ export default function Layout({ children }: LayoutProps) {
                       <hr className="my-2 border-white/20" />
                       <button
                         onClick={handleSignOut}
-                        className="flex items-center space-x-2 px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:glass w-full text-left transition-all"
+                        className="flex items-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 w-full text-left transition-colors"
                       >
                         <LogOut className="w-4 h-4" />
                         <span>Sign out</span>
@@ -153,9 +145,9 @@ export default function Layout({ children }: LayoutProps) {
             <div className="md:hidden flex items-center">
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="p-2 rounded-xl glass hover:glass-strong transition-all duration-300"
+                className="p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
               >
-                {mobileMenuOpen ? <X className="w-6 h-6 text-white" /> : <Menu className="w-6 h-6 text-white" />}
+                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
             </div>
           </div>
@@ -167,7 +159,7 @@ export default function Layout({ children }: LayoutProps) {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="md:hidden py-4 border-t border-white/20"
+                className="md:hidden py-4 border-t border-gray-200"
               >
                 <div className="space-y-2">
                   {navigation.map((item) => {
@@ -177,10 +169,10 @@ export default function Layout({ children }: LayoutProps) {
                         key={item.name}
                         to={item.href}
                         onClick={() => setMobileMenuOpen(false)}
-                        className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 ${
+                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                           isActive
-                            ? 'glass-strong text-white'
-                            : 'text-white/80 hover:text-white hover:glass'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                         }`}
                       >
                         <item.icon className="w-5 h-5" />
@@ -189,19 +181,19 @@ export default function Layout({ children }: LayoutProps) {
                     );
                   })}
                   
-                  <div className="pt-4 mt-4 border-t border-white/20">
+                  <div className="pt-4 mt-4 border-t border-gray-200">
                     <div className="flex items-center space-x-3 px-4 py-2">
                       <img
                         src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'User')}&background=3b82f6&color=white`}
                         alt={profile?.name}
-                        className="w-8 h-8 rounded-full avatar-3d"
+                        className="w-8 h-8 rounded-full"
                       />
-                      <span className="text-sm font-medium text-white">{profile?.name}</span>
+                      <span className="text-sm font-medium text-gray-700">{profile?.name}</span>
                     </div>
                     
                     <button
                       onClick={handleSignOut}
-                      className="flex items-center space-x-3 px-4 py-3 w-full text-left text-sm font-medium text-red-400 hover:text-red-300 hover:glass rounded-xl transition-all"
+                      className="flex items-center space-x-3 px-4 py-3 w-full text-left text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <LogOut className="w-5 h-5" />
                       <span>Sign out</span>
