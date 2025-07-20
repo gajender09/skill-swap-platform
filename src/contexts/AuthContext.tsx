@@ -122,7 +122,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setLoading(true);
       console.log('Starting signup process for:', email);
 
-      // Sign up the user
+      // Sign up the user - this will trigger the database function to create user record
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -141,7 +141,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.log('Auth signup successful:', authData);
 
       if (authData.user) {
-        // Create profile - the trigger should have created the user record
+        // Wait a moment for the trigger to create the user record
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Create profile
         console.log('Creating profile for user:', authData.user.id);
         
         const { data: profileData, error: profileError } = await supabase
@@ -149,34 +152,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
           .insert({
             user_id: authData.user.id,
             name: name,
+            location: null,
+            bio: null,
+            avatar_url: null,
             skills_offered: [],
             skills_wanted: [],
             availability: 'flexible',
-            timezone: 'UTC',
-            languages: [],
-            experience_level: 'intermediate',
             is_public: true,
-            is_verified: false,
-            is_mentor: false,
-            currency: 'USD',
-            total_swaps: 0,
-            total_ratings: 0,
             average_rating: 0.00,
-            response_rate: 0.00,
-            response_time_hours: 24
+            total_ratings: 0,
+            total_swaps: 0
           })
           .select()
           .single();
 
         if (profileError) {
           console.error('Profile creation error:', profileError);
-          throw profileError;
+          // If profile creation fails, still allow signup to complete
+          // User can complete profile later
+          console.log('Profile creation failed, but signup completed');
+          toast.success('Account created successfully! Please complete your profile.');
+        } else {
+          console.log('Profile created successfully:', profileData);
+          setProfile(profileData);
+          toast.success('Account created successfully! Welcome to SkillSwap!');
         }
-
-        console.log('Profile created successfully:', profileData);
-        setProfile(profileData);
-
-        toast.success('Account created successfully! Welcome to SkillSwap!');
       }
     } catch (error: any) {
       console.error('Signup error:', error);

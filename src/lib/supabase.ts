@@ -9,7 +9,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Enhanced Database types
+// Database types
 export interface Database {
   public: {
     Tables: {
@@ -19,24 +19,18 @@ export interface Database {
           email: string;
           created_at: string;
           updated_at: string;
-          last_seen: string;
-          is_active: boolean;
         };
         Insert: {
           id: string;
           email: string;
           created_at?: string;
           updated_at?: string;
-          last_seen?: string;
-          is_active?: boolean;
         };
         Update: {
           id?: string;
           email?: string;
           created_at?: string;
           updated_at?: string;
-          last_seen?: string;
-          is_active?: boolean;
         };
       };
       profiles: {
@@ -44,31 +38,16 @@ export interface Database {
           id: string;
           user_id: string;
           name: string;
-          username: string | null;
-          bio: string | null;
           location: string | null;
           avatar_url: string | null;
-          cover_url: string | null;
-          website: string | null;
-          linkedin_url: string | null;
-          github_url: string | null;
-          twitter_url: string | null;
+          bio: string | null;
           skills_offered: string[];
           skills_wanted: string[];
           availability: string;
-          timezone: string;
-          languages: string[];
-          experience_level: string;
           is_public: boolean;
-          is_verified: boolean;
-          is_mentor: boolean;
-          hourly_rate: number | null;
-          currency: string;
-          total_swaps: number;
-          total_ratings: number;
           average_rating: number;
-          response_rate: number;
-          response_time_hours: number;
+          total_ratings: number;
+          total_swaps: number;
           created_at: string;
           updated_at: string;
         };
@@ -76,31 +55,16 @@ export interface Database {
           id?: string;
           user_id: string;
           name: string;
-          username?: string | null;
-          bio?: string | null;
           location?: string | null;
           avatar_url?: string | null;
-          cover_url?: string | null;
-          website?: string | null;
-          linkedin_url?: string | null;
-          github_url?: string | null;
-          twitter_url?: string | null;
+          bio?: string | null;
           skills_offered?: string[];
           skills_wanted?: string[];
           availability?: string;
-          timezone?: string;
-          languages?: string[];
-          experience_level?: string;
           is_public?: boolean;
-          is_verified?: boolean;
-          is_mentor?: boolean;
-          hourly_rate?: number | null;
-          currency?: string;
-          total_swaps?: number;
-          total_ratings?: number;
           average_rating?: number;
-          response_rate?: number;
-          response_time_hours?: number;
+          total_ratings?: number;
+          total_swaps?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -108,31 +72,16 @@ export interface Database {
           id?: string;
           user_id?: string;
           name?: string;
-          username?: string | null;
-          bio?: string | null;
           location?: string | null;
           avatar_url?: string | null;
-          cover_url?: string | null;
-          website?: string | null;
-          linkedin_url?: string | null;
-          github_url?: string | null;
-          twitter_url?: string | null;
+          bio?: string | null;
           skills_offered?: string[];
           skills_wanted?: string[];
           availability?: string;
-          timezone?: string;
-          languages?: string[];
-          experience_level?: string;
           is_public?: boolean;
-          is_verified?: boolean;
-          is_mentor?: boolean;
-          hourly_rate?: number | null;
-          currency?: string;
-          total_swaps?: number;
-          total_ratings?: number;
           average_rating?: number;
-          response_rate?: number;
-          response_time_hours?: number;
+          total_ratings?: number;
+          total_swaps?: number;
           created_at?: string;
           updated_at?: string;
         };
