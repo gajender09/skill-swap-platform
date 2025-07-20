@@ -131,7 +131,6 @@ export default function AuthPage() {
               <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
               <p className="text-red-300 text-sm">{errors.submit}</p>
             </motion.div>
-            </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
