@@ -8,34 +8,27 @@ interface AuthContextType {
   profile: Profile | null;
   session: Session | null;
   loading: boolean;
-  isAdmin: boolean;
   signUp: (email: string, password: string, name: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
-  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 }
 
-interface AuthProviderProps {
-  children: React.ReactNode;
-}
-
-export function AuthProvider({ children }: AuthProviderProps) {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     // Get initial session
@@ -44,7 +37,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user.id);
-        checkAdminStatus(session.user.id);
       } else {
         setLoading(false);
       }
@@ -53,16 +45,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email);
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
           await fetchProfile(session.user.id);
-          await checkAdminStatus(session.user.id);
         } else {
           setProfile(null);
-          setIsAdmin(false);
           setLoading(false);
         }
       }
@@ -73,8 +62,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const fetchProfile = async (userId: string) => {
     try {
-      console.log('Fetching profile for user:', userId);
-      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -83,14 +70,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (error) {
         console.error('Profile fetch error:', error);
-        if (error.code === 'PGRST116') {
-          // Profile doesn't exist, this is normal for new users
-          console.log('Profile not found, user may need to complete setup');
-        } else {
+        // Profile might not exist yet for new users
+        if (error.code !== 'PGRST116') {
           throw error;
         }
       } else {
-        console.log('Profile fetched successfully:', data);
         setProfile(data);
       }
     } catch (error: any) {
@@ -101,82 +85,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
-  const checkAdminStatus = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .eq('role', 'admin')
-        .eq('is_active', true)
-        .single();
-
-      setIsAdmin(!!data && !error);
-    } catch (error) {
-      setIsAdmin(false);
-    }
-  };
-
   const signUp = async (email: string, password: string, name: string) => {
     try {
       setLoading(true);
-      console.log('Starting signup process for:', email);
-
-      // Sign up the user - this will trigger the database function to create user record
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: {
-            name: name
-          }
+          data: { name }
         }
       });
 
-      if (authError) {
-        console.error('Auth signup error:', authError);
-        throw authError;
-      }
+      if (error) throw error;
 
-      console.log('Auth signup successful:', authData);
-
-      if (authData.user) {
-        // Wait a moment for the trigger to create the user record
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Create profile
-        console.log('Creating profile for user:', authData.user.id);
-        
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: authData.user.id,
-            name: name,
-            location: null,
-            bio: null,
-            avatar_url: null,
-            skills_offered: [],
-            skills_wanted: [],
-            availability: 'flexible',
-            is_public: true,
-            average_rating: 0.00,
-            total_ratings: 0,
-            total_swaps: 0
-          })
-          .select()
-          .single();
-
-        if (profileError) {
-          console.error('Profile creation error:', profileError);
-          // If profile creation fails, still allow signup to complete
-          // User can complete profile later
-          console.log('Profile creation failed, but signup completed');
-          toast.success('Account created successfully! Please complete your profile.');
-        } else {
-          console.log('Profile created successfully:', profileData);
-          setProfile(profileData);
-          toast.success('Account created successfully! Welcome to SkillSwap!');
-        }
+      if (data.user) {
+        toast.success('Account created successfully! Please check your email to verify your account.');
       }
     } catch (error: any) {
       console.error('Signup error:', error);
@@ -190,19 +114,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
-      console.log('Starting signin process for:', email);
-
-      const { data, error } = await supabase.auth.signInWithPassword({
+      
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) {
-        console.error('Signin error:', error);
-        throw error;
-      }
-
-      console.log('Signin successful:', data.user?.email);
+      if (error) throw error;
+      
       toast.success('Welcome back!');
     } catch (error: any) {
       console.error('Signin error:', error);
@@ -219,8 +138,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (error) throw error;
       
       setProfile(null);
-      setIsAdmin(false);
-      toast.success('Signed out successfully!');
+      toast.success('Signed out successfully');
     } catch (error: any) {
       console.error('Signout error:', error);
       toast.error(error.message || 'Error signing out');
@@ -232,8 +150,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (!user) throw new Error('No user logged in');
 
     try {
-      console.log('Updating profile:', updates);
-
       const { data, error } = await supabase
         .from('profiles')
         .update(updates)
@@ -241,24 +157,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
         .select()
         .single();
 
-      if (error) {
-        console.error('Profile update error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('Profile updated successfully:', data);
       setProfile(data);
-      toast.success('Profile updated successfully!');
+      toast.success('Profile updated successfully');
     } catch (error: any) {
       console.error('Update profile error:', error);
       toast.error(error.message || 'Error updating profile');
       throw error;
-    }
-  };
-
-  const refreshProfile = async () => {
-    if (user) {
-      await fetchProfile(user.id);
     }
   };
 
@@ -267,12 +173,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     profile,
     session,
     loading,
-    isAdmin,
     signUp,
     signIn,
     signOut,
     updateProfile,
-    refreshProfile,
   };
 
   return (

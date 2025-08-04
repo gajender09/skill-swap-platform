@@ -4,13 +4,11 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
-import AdminRoute from './components/AdminRoute';
 import AuthPage from './pages/AuthPage';
 import Dashboard from './pages/Dashboard';
 import ProfilePage from './pages/ProfilePage';
 import BrowseSkills from './pages/BrowseSkills';
 import SwapsPage from './pages/SwapsPage';
-import AdminPage from './pages/AdminPage';
 
 function App() {
   return (
@@ -86,16 +84,6 @@ function App() {
                 <Layout>
                   <SwapsPage />
                 </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/admin" element={
-              <ProtectedRoute>
-                <AdminRoute>
-                  <Layout>
-                    <AdminPage />
-                  </Layout>
-                </AdminRoute>
               </ProtectedRoute>
             } />
             

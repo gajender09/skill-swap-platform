@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { Eye, EyeOff, Mail, Lock, User, Zap } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Sparkles } from 'lucide-react';
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -65,7 +64,6 @@ export default function AuthPage() {
         await signUp(email, password, name);
       }
     } catch (error: any) {
-      console.error('Auth error:', error);
       setErrors({ submit: error.message || 'An error occurred' });
     } finally {
       setLoading(false);
@@ -81,16 +79,12 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Header */}
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-8"
-        >
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl mb-6 shadow-lg">
-            <Sparkles className="w-8 h-8 text-white" />
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl mb-6">
+            <Zap className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             {isLogin ? 'Welcome back' : 'Create account'}
@@ -101,17 +95,12 @@ export default function AuthPage() {
               : 'Join our community and start skill swapping'
             }
           </p>
-        </motion.div>
+        </div>
 
         {/* Auth Form */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100"
-        >
+        <div className="card p-8">
           {errors.submit && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-red-700 text-sm">{errors.submit}</p>
             </div>
           )}
@@ -129,9 +118,7 @@ export default function AuthPage() {
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className={`w-full pl-11 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
-                      errors.name ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'
-                    }`}
+                    className={`input pl-11 ${errors.name ? 'input-error' : ''}`}
                     placeholder="Enter your full name"
                   />
                 </div>
@@ -152,9 +139,7 @@ export default function AuthPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className={`w-full pl-11 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
-                    errors.email ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`input pl-11 ${errors.email ? 'input-error' : ''}`}
                   placeholder="Enter your email"
                 />
               </div>
@@ -174,9 +159,7 @@ export default function AuthPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className={`w-full pl-11 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
-                    errors.password ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`input pl-11 pr-12 ${errors.password ? 'input-error' : ''}`}
                   placeholder="Enter your password"
                 />
                 <button
@@ -195,15 +178,12 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 px-4 rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center shadow-lg"
+              className="btn btn-primary w-full py-3"
             >
               {loading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="spinner" />
               ) : (
-                <>
-                  {isLogin ? 'Sign In' : 'Create Account'}
-                  <ArrowRight className="ml-2 w-4 h-4" />
-                </>
+                isLogin ? 'Sign In' : 'Create Account'
               )}
             </button>
           </form>
@@ -220,19 +200,14 @@ export default function AuthPage() {
               </button>
             </p>
           </div>
-        </motion.div>
+        </div>
 
         {/* Trust Indicators */}
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="mt-6 text-center"
-        >
+        <div className="mt-6 text-center">
           <p className="text-sm text-gray-500">
             Secure authentication • Privacy protected
           </p>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
