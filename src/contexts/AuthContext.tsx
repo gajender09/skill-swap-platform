@@ -70,7 +70,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Profile fetch error:', error);
-        // Profile might not exist yet for new users
         if (error.code !== 'PGRST116') {
           throw error;
         }
@@ -79,7 +78,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error: any) {
       console.error('Error fetching profile:', error);
-      toast.error('Error loading profile');
     } finally {
       setLoading(false);
     }
@@ -87,8 +85,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string, name: string) => {
     try {
-      setLoading(true);
-      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -100,21 +96,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
 
       if (data.user) {
-        toast.success('Account created successfully! Please check your email to verify your account.');
+        toast.success('Account created successfully!');
       }
     } catch (error: any) {
       console.error('Signup error:', error);
       toast.error(error.message || 'Error creating account');
       throw error;
-    } finally {
-      setLoading(false);
     }
   };
 
   const signIn = async (email: string, password: string) => {
     try {
-      setLoading(true);
-      
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -127,8 +119,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Signin error:', error);
       toast.error(error.message || 'Error signing in');
       throw error;
-    } finally {
-      setLoading(false);
     }
   };
 
